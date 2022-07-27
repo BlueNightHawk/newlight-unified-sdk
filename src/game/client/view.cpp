@@ -99,64 +99,6 @@ cvar_t v_ipitch_level = {"v_ipitch_level", "0.3", 0, 0.3};
 
 float v_idlescale; // used by TFC for concussion grenade effect
 
-//=============================================================================
-/*
-void V_NormalizeAngles( Vector& angles )
-{
-	int i;
-	// Normalize angles
-	for ( i = 0; i < 3; i++ )
-	{
-		if ( angles[i] > 180.0 )
-		{
-			angles[i] -= 360.0;
-		}
-		else if ( angles[i] < -180.0 )
-		{
-			angles[i] += 360.0;
-		}
-	}
-}
-
-/*
-===================
-V_InterpolateAngles
-
-Interpolate Euler angles.
-FIXME:  Use Quaternions to avoid discontinuities
-Frac is 0.0 to 1.0 ( i.e., should probably be clamped, but doesn't have to be )
-===================
-
-void V_InterpolateAngles( float *start, float *end, float *output, float frac )
-{
-	int i;
-	float ang1, ang2;
-	float d;
-
-	V_NormalizeAngles( start );
-	V_NormalizeAngles( end );
-
-	for ( i = 0 ; i < 3 ; i++ )
-	{
-		ang1 = start[i];
-		ang2 = end[i];
-
-		d = ang2 - ang1;
-		if ( d > 180 )
-		{
-			d -= 360;
-		}
-		else if ( d < -180 )
-		{
-			d += 360;
-		}
-
-		output[i] = ang1 + d * frac;
-	}
-
-	V_NormalizeAngles( output );
-} */
-
 // Quakeworld bob code, this fixes jitters in the mutliplayer since the clock (pparams->time) isn't quite linear
 float V_CalcBob(struct ref_params_s* pparams)
 {
@@ -479,221 +421,11 @@ typedef struct
 	int CurrentAngle;
 } viewinterp_t;
 
-/*
-==================
-V_CalcRefdef
-
-==================
-*/
-void V_CalcNormalRefdef(struct ref_params_s* pparams)
+void V_Interpolation(struct ref_params_s* pparams, cl_entity_t *view)
 {
-	cl_entity_t *ent, *view;
-	int i;
-	Vector angles;
-	float bob, waterOffset;
 	static viewinterp_t ViewInterp;
-
 	static float oldz = 0;
 	static float lasttime;
-
-	Vector camAngles, camForward, camRight, camUp;
-	cl_entity_t* pwater;
-
-	V_DriftPitch(pparams);
-
-	if (0 != gEngfuncs.IsSpectateOnly())
-	{
-		ent = gEngfuncs.GetEntityByIndex(g_iUser2);
-	}
-	else
-	{
-		// ent is the player model ( visible when out of body )
-		ent = gEngfuncs.GetLocalPlayer();
-	}
-
-	// view is the weapon model (only visible from inside body )
-	view = gEngfuncs.GetViewModel();
-
-	// transform the view offset by the model's matrix to get the offset from
-	// model origin for the view
-	bob = V_CalcBob(pparams);
-
-	// refresh position
-	VectorCopy(pparams->simorg, pparams->vieworg);
-	pparams->vieworg[2] += (bob);
-	VectorAdd(pparams->vieworg, pparams->viewheight, pparams->vieworg);
-
-	VectorCopy(pparams->cl_viewangles, pparams->viewangles);
-
-	gEngfuncs.V_CalcShake();
-	gEngfuncs.V_ApplyShake(pparams->vieworg, pparams->viewangles, 1.0);
-
-	// never let view origin sit exactly on a node line, because a water plane can
-	// dissapear when viewed with the eye exactly on it.
-	// FIXME, we send origin at 1/128 now, change this?
-	// the server protocol only specifies to 1/16 pixel, so add 1/32 in each axis
-
-	pparams->vieworg[0] += 1.0 / 32;
-	pparams->vieworg[1] += 1.0 / 32;
-	pparams->vieworg[2] += 1.0 / 32;
-
-	// Check for problems around water, move the viewer artificially if necessary
-	// -- this prevents drawing errors in GL due to waves
-
-	waterOffset = 0;
-	if (pparams->waterlevel >= 2)
-	{
-		int i, contents, waterDist, waterEntity;
-		Vector point;
-		waterDist = cl_waterdist->value;
-
-		if (0 != pparams->hardware)
-		{
-			waterEntity = gEngfuncs.PM_WaterEntity(pparams->simorg);
-			if (waterEntity >= 0 && waterEntity < pparams->max_entities)
-			{
-				pwater = gEngfuncs.GetEntityByIndex(waterEntity);
-				if (pwater && (pwater->model != nullptr))
-				{
-					waterDist += (pwater->curstate.scale * 16); // Add in wave height
-				}
-			}
-		}
-		else
-		{
-			waterEntity = 0; // Don't need this in software
-		}
-
-		VectorCopy(pparams->vieworg, point);
-
-		// Eyes are above water, make sure we're above the waves
-		if (pparams->waterlevel == 2)
-		{
-			point[2] -= waterDist;
-			for (i = 0; i < waterDist; i++)
-			{
-				contents = gEngfuncs.PM_PointContents(point, nullptr);
-				if (contents > CONTENTS_WATER)
-					break;
-				point[2] += 1;
-			}
-			waterOffset = (point[2] + waterDist) - pparams->vieworg[2];
-		}
-		else
-		{
-			// eyes are under water.  Make sure we're far enough under
-			point[2] += waterDist;
-
-			for (i = 0; i < waterDist; i++)
-			{
-				contents = gEngfuncs.PM_PointContents(point, nullptr);
-				if (contents <= CONTENTS_WATER)
-					break;
-				point[2] -= 1;
-			}
-			waterOffset = (point[2] - waterDist) - pparams->vieworg[2];
-		}
-	}
-
-	pparams->vieworg[2] += waterOffset;
-
-	V_CalcViewRoll(pparams);
-
-	V_AddIdle(pparams);
-
-	// offsets
-	VectorCopy(pparams->cl_viewangles, angles);
-
-	AngleVectors(angles, pparams->forward, pparams->right, pparams->up);
-
-	// don't allow cheats in multiplayer
-	if (pparams->maxclients <= 1)
-	{
-		for (i = 0; i < 3; i++)
-		{
-			pparams->vieworg[i] += scr_ofsx->value * pparams->forward[i] + scr_ofsy->value * pparams->right[i] + scr_ofsz->value * pparams->up[i];
-		}
-	}
-
-	// Treating cam_ofs[2] as the distance
-	if (0 != CL_IsThirdPerson())
-	{
-		Vector ofs = g_vecZero;
-
-		CL_CameraOffset(ofs);
-
-		VectorCopy(ofs, camAngles);
-		camAngles[ROLL] = 0;
-
-		AngleVectors(camAngles, camForward, camRight, camUp);
-
-		for (i = 0; i < 3; i++)
-		{
-			pparams->vieworg[i] += -ofs[2] * camForward[i];
-		}
-	}
-
-	// Give gun our viewangles
-	VectorCopy(pparams->cl_viewangles, view->angles);
-
-	// set up gun position
-	V_CalcGunAngle(pparams);
-
-	// Use predicted origin as view origin.
-	VectorCopy(pparams->simorg, view->origin);
-	view->origin[2] += (waterOffset);
-	VectorAdd(view->origin, pparams->viewheight, view->origin);
-
-	// Let the viewmodel shake at about 10% of the amplitude
-	gEngfuncs.V_ApplyShake(view->origin, view->angles, 0.9);
-
-	for (i = 0; i < 3; i++)
-	{
-		view->origin[i] += bob * 0.4 * pparams->forward[i];
-	}
-	view->origin[2] += bob;
-
-	// throw in a little tilt.
-	view->angles[YAW] -= bob * 0.5;
-	view->angles[ROLL] -= bob * 1;
-	view->angles[PITCH] -= bob * 0.3;
-
-	if (0 != cl_bobtilt->value)
-	{
-		VectorCopy(view->angles, view->curstate.angles);
-	}
-
-	// pushing the view origin down off of the same X/Z plane as the ent's origin will give the
-	// gun a very nice 'shifting' effect when the player looks up/down. If there is a problem
-	// with view model distortion, this may be a cause. (SJB).
-	view->origin[2] -= 1;
-
-	// fudge position around to keep amount of weapon visible
-	// roughly equal with different FOV
-	if (pparams->viewsize == 110)
-	{
-		view->origin[2] += 1;
-	}
-	else if (pparams->viewsize == 100)
-	{
-		view->origin[2] += 2;
-	}
-	else if (pparams->viewsize == 90)
-	{
-		view->origin[2] += 1;
-	}
-	else if (pparams->viewsize == 80)
-	{
-		view->origin[2] += 0.5;
-	}
-
-	// Add in the punchangle, if any
-	VectorAdd(pparams->viewangles, pparams->punchangle, pparams->viewangles);
-
-	// Include client side punch, too
-	VectorAdd(pparams->viewangles, ev_punchangle, pparams->viewangles);
-
-	V_DropPunchAngle(pparams->frametime, ev_punchangle);
 
 	// smooth out stair step ups
 #if 1
@@ -703,7 +435,7 @@ void V_CalcNormalRefdef(struct ref_params_s* pparams)
 
 		steptime = pparams->time - lasttime;
 		if (steptime < 0)
-			//FIXME		I_Error ("steptime < 0");
+			// FIXME		I_Error ("steptime < 0");
 			steptime = 0;
 
 		oldz += steptime * 150;
@@ -787,35 +519,190 @@ void V_CalcNormalRefdef(struct ref_params_s* pparams)
 		}
 	}
 
+	lasttime = pparams->time;
+}
+
+float V_AdjustWaterOfs(struct ref_params_s* pparams)
+{
+	cl_entity_t* pwater;
+	float waterOffset = 0.0f;
+
+	// never let view origin sit exactly on a node line, because a water plane can
+	// dissapear when viewed with the eye exactly on it.
+	// FIXME, we send origin at 1/128 now, change this?
+	// the server protocol only specifies to 1/16 pixel, so add 1/32 in each axis
+
+	pparams->vieworg[0] += 1.0 / 32;
+	pparams->vieworg[1] += 1.0 / 32;
+	pparams->vieworg[2] += 1.0 / 32;
+
+	// Check for problems around water, move the viewer artificially if necessary
+	// -- this prevents drawing errors in GL due to waves
+
+	waterOffset = 0;
+	if (pparams->waterlevel >= 2)
+	{
+		int i, contents, waterDist, waterEntity;
+		Vector point;
+		waterDist = cl_waterdist->value;
+
+		if (0 != pparams->hardware)
+		{
+			waterEntity = gEngfuncs.PM_WaterEntity(pparams->simorg);
+			if (waterEntity >= 0 && waterEntity < pparams->max_entities)
+			{
+				pwater = gEngfuncs.GetEntityByIndex(waterEntity);
+				if (pwater && (pwater->model != nullptr))
+				{
+					waterDist += (pwater->curstate.scale * 16); // Add in wave height
+				}
+			}
+		}
+		else
+		{
+			waterEntity = 0; // Don't need this in software
+		}
+
+		VectorCopy(pparams->vieworg, point);
+
+		// Eyes are above water, make sure we're above the waves
+		if (pparams->waterlevel == 2)
+		{
+			point[2] -= waterDist;
+			for (i = 0; i < waterDist; i++)
+			{
+				contents = gEngfuncs.PM_PointContents(point, nullptr);
+				if (contents > CONTENTS_WATER)
+					break;
+				point[2] += 1;
+			}
+			waterOffset = (point[2] + waterDist) - pparams->vieworg[2];
+		}
+		else
+		{
+			// eyes are under water.  Make sure we're far enough under
+			point[2] += waterDist;
+
+			for (i = 0; i < waterDist; i++)
+			{
+				contents = gEngfuncs.PM_PointContents(point, nullptr);
+				if (contents <= CONTENTS_WATER)
+					break;
+				point[2] -= 1;
+			}
+			waterOffset = (point[2] - waterDist) - pparams->vieworg[2];
+		}
+	}
+
+	pparams->vieworg[2] += waterOffset;
+
+	return waterOffset;
+}
+
+void V_ApplyShake(struct ref_params_s* pparams, cl_entity_s* view)
+{
+	gEngfuncs.V_CalcShake();
+	gEngfuncs.V_ApplyShake(pparams->vieworg, pparams->viewangles, 1.0);
+
+	// Let the viewmodel shake at about 10% of the amplitude
+	gEngfuncs.V_ApplyShake(view->origin, view->angles, 0.9);
+}
+
+void V_SyncView(struct ref_params_s* pparams, cl_entity_s* view, float bob)
+{
+	float waterOffset = V_AdjustWaterOfs(pparams);
+
+	// refresh position
+	VectorCopy(pparams->simorg, pparams->vieworg);
+	pparams->vieworg[2] += (bob);
+	VectorAdd(pparams->vieworg, pparams->viewheight, pparams->vieworg);
+
+	VectorCopy(pparams->cl_viewangles, pparams->viewangles);
+
+	AngleVectors(pparams->cl_viewangles, pparams->forward, pparams->right, pparams->up);
+
+	// don't allow cheats in multiplayer
+	if (pparams->maxclients <= 1)
+	{
+		for (int i = 0; i < 3; i++)
+		{
+			pparams->vieworg[i] += scr_ofsx->value * pparams->forward[i] + scr_ofsy->value * pparams->right[i] + scr_ofsz->value * pparams->up[i];
+		}
+	}
+
+	// Give gun our viewangles
+	VectorCopy(pparams->cl_viewangles, view->angles);
+
+	// set up gun position
+	V_CalcGunAngle(pparams);
+
+	// Use predicted origin as view origin.
+	VectorCopy(pparams->simorg, view->origin);
+	view->origin[2] += (waterOffset);
+	VectorAdd(view->origin, pparams->viewheight, view->origin);
+}
+
+void V_ApplyBob(struct ref_params_s* pparams, cl_entity_s* view, float bob)
+{
+	for (int i = 0; i < 3; i++)
+	{
+		view->origin[i] += bob * 0.4 * pparams->forward[i];
+	}
+	view->origin[2] += bob;
+
+	// throw in a little tilt.
+	view->angles[YAW] -= bob * 0.5;
+	view->angles[ROLL] -= bob * 1;
+	view->angles[PITCH] -= bob * 0.3;
+}
+
+void V_AdjustViewModelOfs(ref_params_s *pparams, cl_entity_s* view)
+{
+	// pushing the view origin down off of the same X/Z plane as the ent's origin will give the
+	// gun a very nice 'shifting' effect when the player looks up/down. If there is a problem
+	// with view model distortion, this may be a cause. (SJB).
+	view->origin[2] -= 1;
+
+	// fudge position around to keep amount of weapon visible
+	// roughly equal with different FOV
+	if (pparams->viewsize == 110)
+	{
+		view->origin[2] += 1;
+	}
+	else if (pparams->viewsize == 100)
+	{
+		view->origin[2] += 2;
+	}
+	else if (pparams->viewsize == 90)
+	{
+		view->origin[2] += 1;
+	}
+	else if (pparams->viewsize == 80)
+	{
+		view->origin[2] += 0.5;
+	}
+}
+
+void V_ApplyPunchAngles(struct ref_params_s* pparams)
+{
+	// Add in the punchangle, if any
+	VectorAdd(pparams->viewangles, pparams->punchangle, pparams->viewangles);
+
+	// Include client side punch, too
+	VectorAdd(pparams->viewangles, ev_punchangle, pparams->viewangles);
+
+	V_DropPunchAngle(pparams->frametime, ev_punchangle);
+}
+
+void V_StoreValues(struct ref_params_s* pparams)
+{
 	// Store off v_angles before munging for third person
 	v_angles = pparams->viewangles;
 	v_client_aimangles = pparams->cl_viewangles;
 	v_lastAngles = pparams->viewangles;
 	//	v_cl_angles = pparams->cl_viewangles;	// keep old user mouse angles !
-	if (0 != CL_IsThirdPerson())
-	{
-		VectorCopy(camAngles, pparams->viewangles);
-	}
-
-	//Apply this at all times
-	{
-		float pitch = pparams->viewangles[0];
-
-		// Normalize angles
-		if (pitch > 180)
-			pitch -= 360.0;
-		else if (pitch < -180)
-			pitch += 360;
-
-		// Player pitch is inverted
-		pitch /= -3.0;
-
-		// Slam local player's pitch value
-		ent->angles[0] = pitch;
-		ent->curstate.angles[0] = pitch;
-		ent->prevstate.angles[0] = pitch;
-		ent->latched.prevangles[0] = pitch;
-	}
+	//
+	// Apply this at all times
 
 	// override all previous settings if the viewent isn't the client
 	if (pparams->viewentity > pparams->maxclients)
@@ -832,10 +719,127 @@ void V_CalcNormalRefdef(struct ref_params_s* pparams)
 		}
 	}
 
-	lasttime = pparams->time;
-
 	v_origin = pparams->vieworg;
 	v_crosshairangle = pparams->crosshairangle;
+}
+
+void V_AdjPlayerAngles(struct ref_params_s* pparams)
+{
+	float pitch = pparams->viewangles[0];
+
+	cl_entity_t* ent = nullptr;
+
+	if (0 != gEngfuncs.IsSpectateOnly())
+	{
+		ent = gEngfuncs.GetEntityByIndex(g_iUser2);
+	}
+	else
+	{
+		// ent is the player model ( visible when out of body )
+		ent = gEngfuncs.GetLocalPlayer();
+	}
+
+	// Normalize angles
+	if (pitch > 180)
+		pitch -= 360.0;
+	else if (pitch < -180)
+		pitch += 360;
+
+	// Player pitch is inverted
+	pitch /= -3.0;
+
+	// Slam local player's pitch value
+	ent->angles[0] = pitch;
+	ent->curstate.angles[0] = pitch;
+	ent->prevstate.angles[0] = pitch;
+	ent->latched.prevangles[0] = pitch;
+}
+
+/*
+==================
+V_CalcRefdef
+
+==================
+*/
+void V_CalcNormalRefdef(struct ref_params_s* pparams)
+{
+	cl_entity_t *view;
+	float bob;
+
+	V_DriftPitch(pparams);
+
+	// view is the weapon model (only visible from inside body )
+	view = gEngfuncs.GetViewModel();
+
+	// transform the view offset by the model's matrix to get the offset from
+	// model origin for the view
+	bob = V_CalcBob(pparams);
+
+	V_SyncView(pparams, view, bob);
+
+	V_CalcViewRoll(pparams);
+
+	V_AddIdle(pparams);
+
+	V_ApplyShake(pparams, view);
+
+	V_ApplyBob(pparams, view, bob);
+
+	V_AdjustViewModelOfs(pparams, view);
+
+	V_ApplyPunchAngles(pparams);
+
+	V_Interpolation(pparams, view);
+
+	V_AdjPlayerAngles(pparams);
+	V_StoreValues(pparams);
+
+	VectorCopy(view->angles, view->curstate.angles);
+}
+
+/*
+==================
+V_CalcThirdPersonRefdef
+
+==================
+*/
+void V_CalcThirdPersonRefdef(struct ref_params_s* pparams)
+{
+	// Treating cam_ofs[2] as the distance
+	Vector ofs = g_vecZero;
+	Vector angles;
+	cl_entity_t temp;
+	Vector camAngles, camForward, camRight, camUp;
+
+	V_DriftPitch(pparams);
+
+	V_SyncView(pparams, &temp, 0);
+
+	CL_CameraOffset(ofs);
+
+	VectorCopy(ofs, camAngles);
+	camAngles[ROLL] = 0;
+
+	AngleVectors(camAngles, camForward, camRight, camUp);
+
+	for (int i = 0; i < 3; i++)
+	{
+		pparams->vieworg[i] += -ofs[2] * camForward[i];
+	}
+
+	//	v_cl_angles = pparams->cl_viewangles;	// keep old user mouse angles !
+	VectorCopy(camAngles, pparams->viewangles);
+
+	V_CalcViewRoll(pparams);
+
+	V_ApplyShake(pparams, &temp);
+
+	V_ApplyPunchAngles(pparams);
+
+	V_Interpolation(pparams, &temp);
+
+	V_AdjPlayerAngles(pparams);
+	V_StoreValues(pparams);
 }
 
 void V_SmoothInterpolateAngles(float* startAngle, float* endAngle, float* finalAngle, float degreesPerSec)
@@ -1636,7 +1640,10 @@ void DLLEXPORT V_CalcRefdef(struct ref_params_s* pparams)
 	}
 	else if (0 == pparams->paused)
 	{
-		V_CalcNormalRefdef(pparams);
+		if (CL_IsThirdPerson() != 0)
+			V_CalcThirdPersonRefdef(pparams);
+		else
+			V_CalcNormalRefdef(pparams);
 	}
 
 	/*
