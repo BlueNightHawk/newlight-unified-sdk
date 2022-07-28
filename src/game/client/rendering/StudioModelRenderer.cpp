@@ -16,6 +16,8 @@
 #include "StudioModelRenderer.h"
 #include "GameStudioModelRenderer.h"
 
+viewmodelinfo_t g_viewmodelinfo;
+
 // team colors for old TFC models
 #define TEAM1_COLOR 150
 #define TEAM2_COLOR 250
@@ -1094,6 +1096,141 @@ void CStudioModelRenderer::StudioMergeBones(model_t* m_pSubModel)
 	}
 }
 
+/*
+====================
+StudioCalcBob
+
+====================
+*/
+void CStudioModelRenderer::StudioCalcBob()
+{
+	if (m_pCurrentEntity != gEngfuncs.GetViewModel())
+		return;
+
+	static Vector ang1, org1;
+	Vector ang2, org2;
+
+	model_s* model = m_pCurrentEntity->model;
+	static model_s* cachedviewmodel;
+	static cl_entity_t bobent = *m_pCurrentEntity;
+	static cl_entity_t bobent2 = *m_pCurrentEntity;
+	model_s* bobmodel = IEngineStudio.Mod_ForName("models/v_bob.mdl", 0);
+	cl_entity_t basebobent, basebobent2;
+
+	float velocity = Vector(g_params.simvel).Length2D();
+	velocity = std::clamp(velocity * 0.085f, 0.0f, 15.0f);
+
+	{
+		m_pCurrentEntity = &basebobent;
+		basebobent.model = m_pRenderModel = bobmodel;
+		m_pStudioHeader = (studiohdr_t*)IEngineStudio.Mod_Extradata(m_pRenderModel);
+		IEngineStudio.StudioSetHeader(m_pStudioHeader);
+		IEngineStudio.SetRenderModel(m_pRenderModel);
+
+		m_pCurrentEntity->curstate.sequence = 0;
+		m_pCurrentEntity->curstate.animtime = m_clTime;
+		m_pCurrentEntity->origin = Vector(0, 0, 0);
+		m_pCurrentEntity->angles = m_pCurrentEntity->curstate.angles = gEngfuncs.GetViewModel()->angles;
+
+		StudioSetUpTransform(false);
+
+		(*m_protationmatrix)[0][1] *= -1;
+		(*m_protationmatrix)[1][1] *= -1;
+		(*m_protationmatrix)[2][1] *= -1;
+
+		StudioSetupBones();
+		StudioSaveBones();
+
+		Matrix3x4_OriginFromMatrix((*m_pbonetransform)[40], org1);
+	}
+	if (cachedviewmodel != model)
+	{
+		m_pCurrentEntity = &basebobent2;
+		basebobent2.model = m_pRenderModel = bobmodel;
+		m_pStudioHeader = (studiohdr_t*)IEngineStudio.Mod_Extradata(m_pRenderModel);
+		IEngineStudio.StudioSetHeader(m_pStudioHeader);
+		IEngineStudio.SetRenderModel(m_pRenderModel);
+
+		m_pCurrentEntity->curstate.sequence = 0;
+		m_pCurrentEntity->curstate.animtime = m_clTime;
+		m_pCurrentEntity->origin = Vector(0, 0, 0);
+		m_pCurrentEntity->angles = m_pCurrentEntity->curstate.angles = Vector(0,0,0);
+
+		StudioSetUpTransform(false);
+
+		(*m_protationmatrix)[0][1] *= -1;
+		(*m_protationmatrix)[1][1] *= -1;
+		(*m_protationmatrix)[2][1] *= -1;
+
+		StudioSetupBones();
+		StudioSaveBones();
+
+		Matrix3x4_AnglesFromMatrix((*m_pbonetransform)[40], ang1);
+		cachedviewmodel = model;
+	}
+
+	{
+		m_pCurrentEntity = &bobent;
+		bobent.model = m_pRenderModel = bobmodel;
+		m_pStudioHeader = (studiohdr_t*)IEngineStudio.Mod_Extradata(m_pRenderModel);
+		IEngineStudio.StudioSetHeader(m_pStudioHeader);
+		IEngineStudio.SetRenderModel(m_pRenderModel);
+
+		m_pCurrentEntity->origin = Vector(0, 0, 0);
+		m_pCurrentEntity->angles = m_pCurrentEntity->curstate.angles = gEngfuncs.GetViewModel()->angles;
+
+		if (velocity <= 4.0f)
+		{
+			m_pCurrentEntity->curstate.animtime = m_clTime;
+		}
+
+		StudioSetUpTransform(false);
+
+		(*m_protationmatrix)[0][1] *= -1;
+		(*m_protationmatrix)[1][1] *= -1;
+		(*m_protationmatrix)[2][1] *= -1;
+
+		StudioSetupBones();
+		StudioSaveBones();
+
+		Matrix3x4_OriginFromMatrix((*m_pbonetransform)[40], org2);
+	}
+
+	{
+		m_pCurrentEntity = &bobent2;
+		bobent2.model = m_pRenderModel = bobmodel;
+		m_pStudioHeader = (studiohdr_t*)IEngineStudio.Mod_Extradata(m_pRenderModel);
+		IEngineStudio.StudioSetHeader(m_pStudioHeader);
+		IEngineStudio.SetRenderModel(m_pRenderModel);
+
+		m_pCurrentEntity->origin = Vector(0, 0, 0);
+		m_pCurrentEntity->angles = m_pCurrentEntity->curstate.angles = Vector(0,0,0);
+
+		if (velocity <= 4.0f)
+		{
+			m_pCurrentEntity->curstate.animtime = m_clTime;
+		}
+
+		StudioSetUpTransform(false);
+
+		(*m_protationmatrix)[0][1] *= -1;
+		(*m_protationmatrix)[1][1] *= -1;
+		(*m_protationmatrix)[2][1] *= -1;
+
+		StudioSetupBones();
+		StudioSaveBones();
+
+		Matrix3x4_AnglesFromMatrix((*m_pbonetransform)[40], ang2);
+	}
+
+	g_viewmodelinfo.bobangles = (ang2 - ang1);
+	g_viewmodelinfo.bobofs = (org2 - org1);
+
+	m_pCurrentEntity = IEngineStudio.GetCurrentEntity();
+	IEngineStudio.GetTimes(&m_nFrameCount, &m_clTime, &m_clOldTime);
+	IEngineStudio.GetViewInfo(m_vRenderOrigin, m_vUp, m_vRight, m_vNormal);
+	IEngineStudio.GetAliasScale(&m_fSoftwareXScale, &m_fSoftwareYScale);
+}
 
 /*
 ====================
@@ -1110,6 +1247,8 @@ bool CStudioModelRenderer::StudioDrawModel(int flags)
 	IEngineStudio.GetTimes(&m_nFrameCount, &m_clTime, &m_clOldTime);
 	IEngineStudio.GetViewInfo(m_vRenderOrigin, m_vUp, m_vRight, m_vNormal);
 	IEngineStudio.GetAliasScale(&m_fSoftwareXScale, &m_fSoftwareYScale);
+
+	StudioCalcBob();
 
 	if (m_pCurrentEntity->curstate.renderfx == kRenderFxDeadPlayer)
 	{

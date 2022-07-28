@@ -33,9 +33,22 @@ typedef vec_s_t vec5s_t[5];
 typedef int fixed4_t;
 typedef int fixed8_t;
 typedef int fixed16_t;
+
+typedef vec_t matrix3x4[3][4];
+
 #ifndef M_PI
-#define M_PI 3.14159265358979323846 // matches value in gcc v2 math.h
+#define M_PI (float)3.14159265358979323846
 #endif
+
+#ifndef M_PI2
+#define M_PI2 (float)6.28318530717958647692
+#endif
+
+#define M_PI_F ((float)(M_PI))
+#define M_PI2_F ((float)(M_PI2))
+
+#define RAD2DEG(x) ((float)(x) * (float)(180.f / M_PI))
+#define DEG2RAD(x) ((float)(x) * (float)(M_PI / 180.f))
 
 struct mplane_s;
 
@@ -76,6 +89,10 @@ float VectorNormalize(float* v); // returns vector length
 void VectorInverse(float* v);
 void VectorScale(const float* in, float scale, float* out);
 int Q_log2(int val);
+
+void SinCos(float radians, float* sine, float* cosine);
+#define VectorAverage(a, b, o) ((o)[0] = ((a)[0] + (b)[0]) * 0.5, (o)[1] = ((a)[1] + (b)[1]) * 0.5, (o)[2] = ((a)[2] + (b)[2]) * 0.5)
+#define DotProductAbs(x, y) (abs((x)[0] * (y)[0]) + abs((x)[1] * (y)[1]) + abs((x)[2] * (y)[2]))
 
 void R_ConcatRotations(float in1[3][3], float in2[3][3], float out[3][3]);
 void R_ConcatTransforms(float in1[3][4], float in2[3][4], float out[3][4]);
@@ -122,3 +139,26 @@ float anglemod(float a);
 																   ((p)->dist >= (emaxs)[(p)->type]) ? 2   \
 																									 : 3)) \
 					 : BoxOnPlaneSide((emins), (emaxs), (p)))
+
+//
+// matrixlib.c
+//
+#define Matrix3x4_LoadIdentity(mat) Matrix3x4_Copy(mat, matrix3x4_identity)
+#define Matrix3x4_Copy(out, in) memcpy(out, in, sizeof(matrix3x4))
+
+void Matrix3x4_VectorTransform(const matrix3x4 in, const float v[3], float out[3]);
+void Matrix3x4_VectorITransform(const matrix3x4 in, const float v[3], float out[3]);
+void Matrix3x4_VectorRotate(const matrix3x4 in, const float v[3], float out[3]);
+void Matrix3x4_VectorIRotate(const matrix3x4 in, const float v[3], float out[3]);
+void Matrix3x4_ConcatTransforms(matrix3x4 out, const matrix3x4 in1, const matrix3x4 in2);
+void Matrix3x4_FromOriginQuat(matrix3x4 out, const vec4_t quaternion, const Vector origin);
+void Matrix3x4_CreateFromEntity(matrix3x4 out, const Vector angles, const Vector origin, float scale);
+void Matrix3x4_TransformPositivePlane(const matrix3x4 in, const Vector normal, float d, Vector out, float* dist);
+void Matrix3x4_TransformAABB(const matrix3x4 world, const Vector mins, const Vector maxs, Vector absmin, Vector absmax);
+void Matrix3x4_SetOrigin(matrix3x4 out, float x, float y, float z);
+void Matrix3x4_Invert_Simple(matrix3x4 out, const matrix3x4 in1);
+void Matrix3x4_OriginFromMatrix(const matrix3x4 in, float* out);
+void Matrix3x4_AnglesFromMatrix(const matrix3x4 in, Vector &out);
+void Matrix3x4_Transpose(matrix3x4 out, const matrix3x4 in1);
+
+extern const matrix3x4 matrix3x4_identity;

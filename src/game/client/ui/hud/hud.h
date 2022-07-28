@@ -827,7 +827,17 @@ public:
 	}
 };
 
+typedef struct viewmodelinfo_s
+{
+	Vector bobangles;
+	Vector bobofs;
+} viewmodelinfo_t;
+
+extern viewmodelinfo_t g_viewmodelinfo;
+
 inline CHud gHUD;
+
+extern ref_params_s g_params;
 
 extern int g_iPlayerClass;
 extern int g_iTeamNumber;

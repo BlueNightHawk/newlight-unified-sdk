@@ -238,6 +238,7 @@ target_sources(client PRIVATE
 	../../common/ivoicetweak.h
 	../../common/mathlib.cpp
 	../../common/mathlib.h
+	../../common/matrixlib.cpp
 	../../common/netadr.h
 	../../common/net_api.h
 	../../common/parsemsg.cpp

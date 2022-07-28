@@ -99,52 +99,6 @@ cvar_t v_ipitch_level = {"v_ipitch_level", "0.3", 0, 0.3};
 
 float v_idlescale; // used by TFC for concussion grenade effect
 
-// Quakeworld bob code, this fixes jitters in the mutliplayer since the clock (pparams->time) isn't quite linear
-float V_CalcBob(struct ref_params_s* pparams)
-{
-	static double bobtime = 0;
-	static float bob = 0;
-	float cycle;
-	static float lasttime = 0;
-	Vector vel;
-
-
-	if (pparams->onground == -1 ||
-		pparams->time == lasttime)
-	{
-		// just use old value
-		return bob;
-	}
-
-	lasttime = pparams->time;
-
-	//TODO: bobtime will eventually become a value so large that it will no longer behave properly.
-	//Consider resetting the variable if a level change is detected (pparams->time < lasttime might do the trick).
-	bobtime += pparams->frametime;
-	cycle = bobtime - (int)(bobtime / cl_bobcycle->value) * cl_bobcycle->value;
-	cycle /= cl_bobcycle->value;
-
-	if (cycle < cl_bobup->value)
-	{
-		cycle = M_PI * cycle / cl_bobup->value;
-	}
-	else
-	{
-		cycle = M_PI + M_PI * (cycle - cl_bobup->value) / (1.0 - cl_bobup->value);
-	}
-
-	// bob is proportional to simulated velocity in the xy plane
-	// (don't count Z, or jumping messes it up)
-	VectorCopy(pparams->simvel, vel);
-	vel[2] = 0;
-
-	bob = sqrt(vel[0] * vel[0] + vel[1] * vel[1]) * cl_bob->value;
-	bob = bob * 0.3 + bob * 0.7 * sin(cycle);
-	bob = V_min(bob, 4);
-	bob = V_max(bob, -7);
-	return bob;
-}
-
 /*
 ===============
 V_CalcRoll
@@ -608,13 +562,12 @@ void V_ApplyShake(struct ref_params_s* pparams, cl_entity_s* view)
 	gEngfuncs.V_ApplyShake(view->origin, view->angles, 0.9);
 }
 
-void V_SyncView(struct ref_params_s* pparams, cl_entity_s* view, float bob)
+void V_SyncView(struct ref_params_s* pparams, cl_entity_s* view)
 {
 	float waterOffset = V_AdjustWaterOfs(pparams);
 
 	// refresh position
 	VectorCopy(pparams->simorg, pparams->vieworg);
-	pparams->vieworg[2] += (bob);
 	VectorAdd(pparams->vieworg, pparams->viewheight, pparams->vieworg);
 
 	VectorCopy(pparams->cl_viewangles, pparams->viewangles);
@@ -642,18 +595,31 @@ void V_SyncView(struct ref_params_s* pparams, cl_entity_s* view, float bob)
 	VectorAdd(view->origin, pparams->viewheight, view->origin);
 }
 
-void V_ApplyBob(struct ref_params_s* pparams, cl_entity_s* view, float bob)
+void V_ApplyBob(struct ref_params_s* pparams, cl_entity_s* view)
 {
+	static Vector bobangles, bobofs;
+	float velocity = Vector(pparams->simvel).Length2D();
+	velocity = std::clamp(velocity * 0.085f, 0.0f, 15.0f);
+
 	for (int i = 0; i < 3; i++)
 	{
-		view->origin[i] += bob * 0.4 * pparams->forward[i];
+		if (velocity > 4.0f)
+		{
+			bobangles[i] = std::lerp(bobangles[i], g_viewmodelinfo.bobangles[i], pparams->frametime * velocity);
+			bobofs[i] = std::lerp(bobofs[i], g_viewmodelinfo.bobofs[i], pparams->frametime * velocity);
+		}
+		else
+		{
+			bobangles[i] = std::lerp(bobangles[i],0, pparams->frametime * 5.0f);
+			bobofs[i] = std::lerp(bobofs[i], 0, pparams->frametime * 5.0f);
+		}
+		view->origin[i] += bobofs[i] * 0.42f;
 	}
-	view->origin[2] += bob;
+	view->angles[0] += bobangles[0] * 0.65f;
+	view->angles[2] += bobangles[1] * 1.05f;
+//	view->angles[2] += bobangles[2] * 0.55f;
 
-	// throw in a little tilt.
-	view->angles[YAW] -= bob * 0.5;
-	view->angles[ROLL] -= bob * 1;
-	view->angles[PITCH] -= bob * 0.3;
+	VectorAdd(pparams->viewangles, bobangles * 0.15f, pparams->viewangles);
 }
 
 void V_AdjustViewModelOfs(ref_params_s *pparams, cl_entity_s* view)
@@ -764,18 +730,13 @@ V_CalcRefdef
 void V_CalcNormalRefdef(struct ref_params_s* pparams)
 {
 	cl_entity_t *view;
-	float bob;
 
 	V_DriftPitch(pparams);
 
 	// view is the weapon model (only visible from inside body )
 	view = gEngfuncs.GetViewModel();
 
-	// transform the view offset by the model's matrix to get the offset from
-	// model origin for the view
-	bob = V_CalcBob(pparams);
-
-	V_SyncView(pparams, view, bob);
+	V_SyncView(pparams, view);
 
 	V_CalcViewRoll(pparams);
 
@@ -783,7 +744,7 @@ void V_CalcNormalRefdef(struct ref_params_s* pparams)
 
 	V_ApplyShake(pparams, view);
 
-	V_ApplyBob(pparams, view, bob);
+	V_ApplyBob(pparams, view);
 
 	V_AdjustViewModelOfs(pparams, view);
 
@@ -813,7 +774,7 @@ void V_CalcThirdPersonRefdef(struct ref_params_s* pparams)
 
 	V_DriftPitch(pparams);
 
-	V_SyncView(pparams, &temp, 0);
+	V_SyncView(pparams, &temp);
 
 	CL_CameraOffset(ofs);
 
@@ -1621,7 +1582,7 @@ void V_CalcSpectatorRefdef(struct ref_params_s* pparams)
 	VectorCopy(v_origin, pparams->vieworg);
 }
 
-
+ref_params_s g_params;
 
 void DLLEXPORT V_CalcRefdef(struct ref_params_s* pparams)
 {
@@ -1645,6 +1606,8 @@ void DLLEXPORT V_CalcRefdef(struct ref_params_s* pparams)
 		else
 			V_CalcNormalRefdef(pparams);
 	}
+
+	memcpy(&g_params, pparams, sizeof(ref_params_s));
 
 	/*
 	// Example of how to overlay the whole screen with red at 50 % alpha
