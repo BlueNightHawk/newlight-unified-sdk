@@ -103,6 +103,7 @@ target_sources(client PRIVATE
 	util.cpp
 	view.cpp
 	view.h
+	parsefuncs.cpp
 	
 	hl/hl_baseentity.cpp
 	hl/hl_events.cpp

@@ -39,6 +39,8 @@
 
 #include "particleman.h"
 
+#include "parsefuncs.h"
+
 void CL_LoadParticleMan();
 void CL_UnloadParticleMan();
 
@@ -123,6 +125,8 @@ int DLLEXPORT Initialize(cl_enginefunc_t* pEnginefuncs, int iVersion)
 	{
 		return 0;
 	}
+
+	ParseFunc_ReadViewModelInfo();
 
 	// get tracker interface, if any
 	return 1;

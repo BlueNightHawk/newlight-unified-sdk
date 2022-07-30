@@ -452,6 +452,9 @@ void IN_UseDown()
 void IN_UseUp() { KeyUp(&in_use); }
 void IN_JumpDown()
 {
+	if (g_viewmodelinfo.jumpstate == 0)
+		g_viewmodelinfo.jumpstate = 1;
+
 	KeyDown(&in_jump);
 	gHUD.m_Spectator.HandleButtonsDown(IN_JUMP);
 }

@@ -19,6 +19,16 @@
 #include "hltv.h"
 #include "Exports.h"
 #include "view.h"
+#include "parsefuncs.h"
+
+#include "studio.h"
+#include "com_model.h"
+
+#include "StudioModelRenderer.h"
+#include "GameStudioModelRenderer.h"
+
+// The renderer object, created on the stack.
+extern CGameStudioModelRenderer g_StudioRenderer;
 
 int CL_IsThirdPerson();
 void CL_CameraOffset(float* ofs);
@@ -295,18 +305,20 @@ V_CalcViewRoll
 Roll is induced by movement and damage
 ==============
 */
-void V_CalcViewRoll(struct ref_params_s* pparams)
+void V_CalcViewRoll(struct ref_params_s* pparams, cl_entity_s *view)
 {
-	float side;
+	static float side = 0.0f;
 	cl_entity_t* viewentity;
 
 	viewentity = gEngfuncs.GetEntityByIndex(pparams->viewentity);
 	if (!viewentity)
 		return;
 
-	side = V_CalcRoll(viewentity->angles, pparams->simvel, cl_rollangle->value, cl_rollspeed->value);
+	side = std::lerp(side,
+		V_CalcRoll(viewentity->angles, pparams->simvel, cl_rollangle->value, cl_rollspeed->value) * 2.0f,
+		pparams->frametime * 6.0f);
 
-	pparams->viewangles[ROLL] += side;
+	view->angles[ROLL] += side;
 
 	if (pparams->health <= 0 && (pparams->viewheight[2] != 0))
 	{
@@ -595,31 +607,33 @@ void V_SyncView(struct ref_params_s* pparams, cl_entity_s* view)
 	VectorAdd(view->origin, pparams->viewheight, view->origin);
 }
 
+
+
 void V_ApplyBob(struct ref_params_s* pparams, cl_entity_s* view)
 {
 	static Vector bobangles, bobofs;
 	float velocity = Vector(pparams->simvel).Length2D();
-	velocity = std::clamp(velocity * 0.085f, 0.0f, 15.0f);
+	velocity = std::clamp(velocity * 0.095f, 4.0f, 20.0f);
+
+	float scale = 1.0f;
+
+	if (g_viewmodelextrainfo != nullptr && g_viewmodelextrainfo->bobscale != 0.0f)
+	{
+		scale = g_viewmodelextrainfo->bobscale;
+	}
 
 	for (int i = 0; i < 3; i++)
 	{
-		if (velocity > 4.0f)
-		{
-			bobangles[i] = std::lerp(bobangles[i], g_viewmodelinfo.bobangles[i], pparams->frametime * velocity);
-			bobofs[i] = std::lerp(bobofs[i], g_viewmodelinfo.bobofs[i], pparams->frametime * velocity);
-		}
-		else
-		{
-			bobangles[i] = std::lerp(bobangles[i],0, pparams->frametime * 5.0f);
-			bobofs[i] = std::lerp(bobofs[i], 0, pparams->frametime * 5.0f);
-		}
-		view->origin[i] += bobofs[i] * 0.42f;
-	}
-	view->angles[0] += bobangles[0] * 0.65f;
-	view->angles[2] += bobangles[1] * 1.05f;
-//	view->angles[2] += bobangles[2] * 0.55f;
+		bobangles[i] = std::lerp(bobangles[i], g_viewmodelinfo.bobangles[i], pparams->frametime * velocity);
+		bobofs[i] = std::lerp(bobofs[i], g_viewmodelinfo.bobofs[i], pparams->frametime * velocity);
 
-	VectorAdd(pparams->viewangles, bobangles * 0.15f, pparams->viewangles);
+		view->origin[i] += bobofs[i] * scale;
+	}
+	view->angles[0] -= (bobangles[0]*1.35f) * scale;
+	view->angles[2] += bobangles[1] + bobangles[2] * scale;
+	view->angles[1] += bobangles[1] * scale;
+
+	VectorAdd(pparams->viewangles, bobangles * 0.15f * scale, pparams->viewangles);
 }
 
 void V_AdjustViewModelOfs(ref_params_s *pparams, cl_entity_s* view)
@@ -658,6 +672,32 @@ void V_ApplyPunchAngles(struct ref_params_s* pparams)
 	VectorAdd(pparams->viewangles, ev_punchangle, pparams->viewangles);
 
 	V_DropPunchAngle(pparams->frametime, ev_punchangle);
+}
+
+void ViewPunch(float* ev_punchangle, float frametime, float* punch);
+Vector jmp_punch, jmp_angles;
+
+void V_ApplyJumpAngles(struct ref_params_s* pparams, cl_entity_s *view)
+{
+	VectorAdd(pparams->viewangles, jmp_angles / 3.0f, pparams->viewangles);
+	VectorAdd(view->angles, jmp_angles, view->angles);
+
+	view->origin = view->origin + Vector(pparams->up) * -jmp_angles[0] * 0.2f;
+
+	ViewPunch(jmp_angles, pparams->frametime, jmp_punch);
+
+	if (g_viewmodelinfo.jumpstate == 1)
+	{
+		jmp_punch[0] = -20 * 2.5;
+		jmp_punch[1] = 20 * 2.5;
+		g_viewmodelinfo.jumpstate = 2;
+	}
+	else if (g_viewmodelinfo.jumpstate == 2 && pparams->onground)
+	{
+		jmp_punch[0] = -20 * 2.5;
+		jmp_punch[1] = 20 * 2.5;
+		g_viewmodelinfo.jumpstate = 0;
+	}
 }
 
 void V_StoreValues(struct ref_params_s* pparams)
@@ -722,6 +762,73 @@ void V_AdjPlayerAngles(struct ref_params_s* pparams)
 }
 
 /*
+=============
+PLut Client Punch From HL2
+=============
+*/
+#define PUNCH_DAMPING 9.0f // bigger number makes the response more damped, smaller is less damped
+
+#define PUNCH_SPRING_CONSTANT 65.0f // bigger number increases the speed at which the view corrects
+
+Vector punch;
+
+
+void ViewPunch(float* ev_punchangle, float frametime, float *punch)
+{
+	float damping;
+	float springForceMagnitude;
+
+	if (Length(ev_punchangle) > 0.001 || Length(punch) > 0.001)
+	{
+		VectorMA(ev_punchangle, frametime, punch, ev_punchangle);
+		damping = 1 - (PUNCH_DAMPING * frametime);
+
+		if (damping < 0)
+		{
+			damping = 0;
+		}
+		VectorScale(punch, damping, punch);
+
+		// torsional spring
+
+		// UNDONE: Per-axis spring constant?
+		springForceMagnitude = PUNCH_SPRING_CONSTANT * frametime;
+		springForceMagnitude = std::clamp(springForceMagnitude, 0.0f, 2.0f);
+
+		VectorMA(punch, -springForceMagnitude, ev_punchangle, punch);
+
+		// don't wrap around
+		ev_punchangle[0] = std::clamp(ev_punchangle[0], -7.0f, 7.0f);
+		ev_punchangle[1] = std::clamp(ev_punchangle[1], -179.0f, 179.0f);
+		ev_punchangle[2] = std::clamp(ev_punchangle[2], -7.0f, 7.0f);
+	}
+}
+
+
+/*
+==================
+V_CalcCamAnim
+
+==================
+*/
+void V_CalcCamAnim(struct ref_params_s* pparams)
+{
+	static Vector camangle;
+
+	if (g_curviewmodelextrainfo != nullptr)
+		g_viewmodelinfo.camangles = (g_viewmodelinfo.boneangles - g_viewmodelinfo.baseangle) * g_curviewmodelextrainfo->camscale;
+	else
+		g_viewmodelinfo.camangles = g_vecZero;
+
+	for (int i = 0; i < 3; i++)
+	{
+		camangle[i] = std::lerp(camangle[i], g_viewmodelinfo.camangles[i], pparams->frametime * 18.0f);
+	}
+
+	VectorAdd(pparams->viewangles, camangle, pparams->viewangles);
+}
+
+/*
 ==================
 V_CalcRefdef
 
@@ -738,7 +845,7 @@ void V_CalcNormalRefdef(struct ref_params_s* pparams)
 
 	V_SyncView(pparams, view);
 
-	V_CalcViewRoll(pparams);
+	V_CalcViewRoll(pparams, view);
 
 	V_AddIdle(pparams);
 
@@ -746,13 +853,17 @@ void V_CalcNormalRefdef(struct ref_params_s* pparams)
 
 	V_ApplyBob(pparams, view);
 
+	V_CalcCamAnim(pparams);
+
 	V_AdjustViewModelOfs(pparams, view);
 
 	V_ApplyPunchAngles(pparams);
+	V_ApplyJumpAngles(pparams, view);
 
 	V_Interpolation(pparams, view);
 
 	V_AdjPlayerAngles(pparams);
+
 	V_StoreValues(pparams);
 
 	VectorCopy(view->angles, view->curstate.angles);
@@ -791,7 +902,7 @@ void V_CalcThirdPersonRefdef(struct ref_params_s* pparams)
 	//	v_cl_angles = pparams->cl_viewangles;	// keep old user mouse angles !
 	VectorCopy(camAngles, pparams->viewangles);
 
-	V_CalcViewRoll(pparams);
+	V_CalcViewRoll(pparams, &temp);
 
 	V_ApplyShake(pparams, &temp);
 

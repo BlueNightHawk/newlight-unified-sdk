@@ -182,4 +182,5 @@ public:
 
 public:
 	void StudioCalcBob();
+	void StudioCalcBaseAngles();
 };

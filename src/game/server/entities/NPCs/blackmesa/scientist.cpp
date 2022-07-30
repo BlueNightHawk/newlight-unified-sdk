@@ -559,16 +559,15 @@ bool CScientist::KeyValue(KeyValueData* pkvd)
 
 void CScientist::Spawn()
 {
-	if (pev->body == -1)
-	{														 // -1 chooses a random head
-		SetBodygroup(ScientistBodygroup::Head, RANDOM_LONG(0, GetBodygroupSubmodelCount(ScientistBodygroup::Head)) - 1); // pick a head, any head
-	}
-
 	Precache();
 
 	SetModel(STRING(pev->model));
 	UTIL_SetSize(pev, VEC_HUMAN_HULL_MIN, VEC_HUMAN_HULL_MAX);
 
+	// every new scientist must call this, otherwise
+	// when a level is loaded, nobody will talk (time is reset to 0)
+	TalkInit();
+	
 	pev->solid = SOLID_SLIDEBOX;
 	pev->movetype = MOVETYPE_STEP;
 	m_bloodColor = BLOOD_COLOR_RED;
@@ -586,6 +585,11 @@ void CScientist::Spawn()
 	// Luther is black, make his hands black
 	if (GetBodygroup(ScientistBodygroup::Head) == HEAD_LUTHER)
 		pev->skin = 1;
+	if (pev->body == -1)
+	{																													 // -1 chooses a random head
+		SetBodygroup(ScientistBodygroup::Head, RANDOM_LONG(0, GetBodygroupSubmodelCount(ScientistBodygroup::Head)) - 1); // pick a head, any head
+	}
+
 
 	SetBodygroup(ScientistBodygroup::Item, static_cast<int>(m_Item));
 
@@ -605,10 +609,6 @@ void CScientist::Precache()
 	PRECACHE_SOUND("scientist/sci_pain3.wav");
 	PRECACHE_SOUND("scientist/sci_pain4.wav");
 	PRECACHE_SOUND("scientist/sci_pain5.wav");
-
-	// every new scientist must call this, otherwise
-	// when a level is loaded, nobody will talk (time is reset to 0)
-	TalkInit();
 
 	CTalkMonster::Precache();
 }

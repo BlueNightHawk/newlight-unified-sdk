@@ -831,6 +831,18 @@ typedef struct viewmodelinfo_s
 {
 	Vector bobangles;
 	Vector bobofs;
+	Vector cbobbaseangles;
+	Vector cbobangles;
+
+	Vector jumpangles;
+	Vector jumpofs;
+
+	Vector baseangle;
+	Vector camangles;
+
+	Vector boneangles;
+
+	int jumpstate;
 } viewmodelinfo_t;
 
 extern viewmodelinfo_t g_viewmodelinfo;
