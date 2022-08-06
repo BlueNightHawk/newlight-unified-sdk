@@ -110,13 +110,17 @@ TYPEDESCRIPTION CBasePlayer::m_playerSaveData[] =
 		DEFINE_FIELD(CBasePlayer, m_iHideHUD, FIELD_INTEGER),
 		DEFINE_FIELD(CBasePlayer, m_iFOV, FIELD_INTEGER),
 
+		DEFINE_FIELD(CBasePlayer, m_SndLast, FIELD_EHANDLE),
+		DEFINE_FIELD(CBasePlayer, m_SndRoomtype, FIELD_INTEGER),
+		DEFINE_FIELD(CBasePlayer, m_flSndRange, FIELD_FLOAT),
+
 		DEFINE_FIELD(CBasePlayer, m_pRope, FIELD_CLASSPTR),
 		DEFINE_FIELD(CBasePlayer, m_flLastClimbTime, FIELD_TIME),
 		DEFINE_FIELD(CBasePlayer, m_bIsClimbing, FIELD_BOOLEAN),
 
 		//Vanilla Op4 doesn't restore this. Not a big deal but it can cause you to teleport to the wrong area after a restore
 		DEFINE_FIELD(CBasePlayer, m_DisplacerReturn, FIELD_POSITION_VECTOR),
-		DEFINE_FIELD(CBasePlayer, m_flDisplacerSndRoomtype, FIELD_FLOAT),
+		DEFINE_FIELD(CBasePlayer, m_DisplacerSndRoomtype, FIELD_INTEGER),
 		DEFINE_FIELD(CBasePlayer, m_HudColor, FIELD_INTEGER),
 
 		//DEFINE_FIELD( CBasePlayer, m_fDeadTime, FIELD_FLOAT ), // only used in multiplayer games
@@ -3094,6 +3098,7 @@ void CBasePlayer::Spawn()
 
 	m_iFOV = 0;		   // init field of view.
 	m_iClientFOV = -1; // make sure fov reset is sent
+	m_ClientSndRoomtype = -1;
 
 	m_flNextDecalTime = 0; // let this player decal as soon as he spawns.
 
@@ -3267,6 +3272,13 @@ bool CBasePlayer::Restore(CRestore& restore)
 	pev->fixangle = 1; // turn this way immediately
 
 	m_iClientFOV = -1; // Make sure the client gets the right FOV value.
+	m_ClientSndRoomtype = -1;
+
+	// Reset room type on level change.
+	if (!FStrEq(restore.GetData().szCurrentMapName, STRING(gpGlobals->mapname)))
+	{
+		m_SndRoomtype = 0;
+	}
 
 	// Copied from spawn() for now
 	m_bloodColor = BLOOD_COLOR_RED;
@@ -3416,7 +3428,9 @@ void CBasePlayer::SelectItem(const char* pstr)
 
 	if (m_pActiveItem)
 	{
+		m_pActiveItem->m_ForceSendAnimations = true;
 		m_pActiveItem->Deploy();
+		m_pActiveItem->m_ForceSendAnimations = false;
 		m_pActiveItem->UpdateItemInfo();
 	}
 }
@@ -3718,6 +3732,7 @@ void CBasePlayer::ForceClientDllUpdate()
 	m_iClientHideHUD = -1;
 	m_iClientFOV = -1;
 	m_ClientWeaponBits = 0;
+	m_ClientSndRoomtype = -1;
 
 	for (int i = 0; i < MAX_AMMO_SLOTS; ++i)
 	{
@@ -4614,6 +4629,16 @@ void CBasePlayer::UpdateClientData()
 		m_flNextSBarUpdateTime = gpGlobals->time + 0.2;
 	}
 
+	// Send new room type to client.
+	if (m_ClientSndRoomtype != m_SndRoomtype)
+	{
+		m_ClientSndRoomtype = m_SndRoomtype;
+
+		MESSAGE_BEGIN(MSG_ONE, SVC_ROOMTYPE, nullptr, edict());
+		WRITE_SHORT((short)m_SndRoomtype); // sequence number
+		MESSAGE_END();
+	}
+
 	//Handled anything that needs resetting
 	m_bRestored = false;
 }
@@ -5203,7 +5228,9 @@ bool CBasePlayer::SwitchWeapon(CBasePlayerItem* pWeapon)
 
 	if (pWeapon)
 	{
+		pWeapon->m_ForceSendAnimations = true;
 		pWeapon->Deploy();
+		pWeapon->m_ForceSendAnimations = false;
 	}
 
 	return true;

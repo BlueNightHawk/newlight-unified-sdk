@@ -1,17 +1,17 @@
 /***
-*
-*	Copyright (c) 1996-2001, Valve LLC. All rights reserved.
-*
-*	This product contains software technology licensed from Id
-*	Software, Inc. ("Id Technology").  Id Technology (c) 1996 Id Software, Inc.
-*	All Rights Reserved.
-*
-*   Use, distribution, and modification of this source code and/or resulting
-*   object code is restricted to non-commercial enhancements to products from
-*   Valve LLC.  All other use, distribution, or modification is prohibited
-*   without written permission from Valve LLC.
-*
-****/
+ *
+ *	Copyright (c) 1996-2001, Valve LLC. All rights reserved.
+ *
+ *	This product contains software technology licensed from Id
+ *	Software, Inc. ("Id Technology").  Id Technology (c) 1996 Id Software, Inc.
+ *	All Rights Reserved.
+ *
+ *   Use, distribution, and modification of this source code and/or resulting
+ *   object code is restricted to non-commercial enhancements to products from
+ *   Valve LLC.  All other use, distribution, or modification is prohibited
+ *   without written permission from Valve LLC.
+ *
+ ****/
 //=========================================================
 // sound.cpp
 //=========================================================
@@ -827,7 +827,7 @@ bool CAmbientGeneric::KeyValue(KeyValueData* pkvd)
 	return CBaseEntity::KeyValue(pkvd);
 }
 
-//if you change this, also change CAmbientMusic::KeyValue!
+// if you change this, also change CAmbientMusic::KeyValue!
 enum class AmbientMusicCommand
 {
 	Play = 0,
@@ -844,12 +844,12 @@ enum class AmbientMusicTargetSelector
 	Radius
 };
 
-//Used internally only, level designers should not use this flag directly!
+// Used internally only, level designers should not use this flag directly!
 constexpr int SF_AMBIENTMUSIC_REMOVEONFIRE = 1 << 0;
 
 /**
-*	@brief Plays music.
-*/
+ *	@brief Plays music.
+ */
 class CAmbientMusic : public CBaseEntity
 {
 public:
@@ -1050,7 +1050,7 @@ void CAmbientMusic::RadiusThink()
 
 std::string CAmbientMusic::GetCommand() const
 {
-	//Compute the command now in case mappers change the keyvalues after spawn.
+	// Compute the command now in case mappers change the keyvalues after spawn.
 	return [this]()
 	{
 		switch (m_Command)
@@ -1079,14 +1079,14 @@ public:
 	static TYPEDESCRIPTION m_SaveData[];
 
 	float m_flRadius;
-	float m_flRoomtype;
+	int m_Roomtype;
 };
 
 LINK_ENTITY_TO_CLASS(env_sound, CEnvSound);
 TYPEDESCRIPTION CEnvSound::m_SaveData[] =
 	{
 		DEFINE_FIELD(CEnvSound, m_flRadius, FIELD_FLOAT),
-		DEFINE_FIELD(CEnvSound, m_flRoomtype, FIELD_FLOAT),
+		DEFINE_FIELD(CEnvSound, m_Roomtype, FIELD_INTEGER),
 };
 
 IMPLEMENT_SAVERESTORE(CEnvSound, CPointEntity);
@@ -1102,7 +1102,7 @@ bool CEnvSound::KeyValue(KeyValueData* pkvd)
 	}
 	if (FStrEq(pkvd->szKeyName, "roomtype"))
 	{
-		m_flRoomtype = atof(pkvd->szValue);
+		m_Roomtype = atoi(pkvd->szValue);
 		return true;
 	}
 
@@ -1112,16 +1112,13 @@ bool CEnvSound::KeyValue(KeyValueData* pkvd)
 // returns true if the given sound entity (pev) is in range
 // and can see the given player entity (pevTarget)
 
-bool FEnvSoundInRange(entvars_t* pev, entvars_t* pevTarget, float* pflRange)
+bool FEnvSoundInRange(CEnvSound* pSound, entvars_t* pevTarget, float& flRange)
 {
-	CEnvSound* pSound = GetClassPtr((CEnvSound*)pev);
-	Vector vecSpot1 = pev->origin + pev->view_ofs;
-	Vector vecSpot2 = pevTarget->origin + pevTarget->view_ofs;
-	Vector vecRange;
-	float flRange;
+	const Vector vecSpot1 = pSound->pev->origin + pSound->pev->view_ofs;
+	const Vector vecSpot2 = pevTarget->origin + pevTarget->view_ofs;
 	TraceResult tr;
 
-	UTIL_TraceLine(vecSpot1, vecSpot2, ignore_monsters, ENT(pev), &tr);
+	UTIL_TraceLine(vecSpot1, vecSpot2, ignore_monsters, pSound->edict(), &tr);
 
 	// check if line of sight crosses water boundary, or is blocked
 
@@ -1130,16 +1127,10 @@ bool FEnvSoundInRange(entvars_t* pev, entvars_t* pevTarget, float* pflRange)
 
 	// calc range from sound entity to player
 
-	vecRange = tr.vecEndPos - vecSpot1;
+	const Vector vecRange = tr.vecEndPos - vecSpot1;
 	flRange = vecRange.Length();
 
-	if (pSound->m_flRadius < flRange)
-		return false;
-
-	if (pflRange)
-		*pflRange = flRange;
-
-	return true;
+	return pSound->m_flRadius >= flRange;
 }
 
 //
@@ -1155,99 +1146,73 @@ bool FEnvSoundInRange(entvars_t* pev, entvars_t* pevTarget, float* pflRange)
 
 void CEnvSound::Think()
 {
-	// get pointer to client if visible; FIND_CLIENT_IN_PVS will
-	// cycle through visible clients on consecutive calls.
-
-	edict_t* pentPlayer = FIND_CLIENT_IN_PVS(edict());
-	CBasePlayer* pPlayer = nullptr;
-
-	if (FNullEnt(pentPlayer))
-		goto env_sound_Think_slow; // no player in pvs of sound entity, slow it down
-
-	pPlayer = GetClassPtr((CBasePlayer*)VARS(pentPlayer));
-	float flRange;
-
-	// check to see if this is the sound entity that is
-	// currently affecting this player
-
-	if (!FNullEnt(pPlayer->m_pentSndLast) && (pPlayer->m_pentSndLast == ENT(pev)))
+	const bool shouldThinkFast = [this]()
 	{
+		// get pointer to client if visible; FIND_CLIENT_IN_PVS will
+		// cycle through visible clients on consecutive calls.
+		edict_t* pentPlayer = FIND_CLIENT_IN_PVS(edict());
 
-		// this is the entity currently affecting player, check
-		// for validity
+		if (FNullEnt(pentPlayer))
+			return false; // no player in pvs of sound entity, slow it down
 
-		if (pPlayer->m_flSndRoomtype != 0 && pPlayer->m_flSndRange != 0)
+		// check to see if this is the sound entity that is currently affecting this player
+		auto pPlayer = GetClassPtr((CBasePlayer*)VARS(pentPlayer));
+		float flRange;
+
+		if (pPlayer->m_SndLast && pPlayer->m_SndLast == this)
 		{
-
-			// we're looking at a valid sound entity affecting
-			// player, make sure it's still valid, update range
-
-			if (FEnvSoundInRange(pev, VARS(pentPlayer), &flRange))
+			// this is the entity currently affecting player, check for validity
+			if (pPlayer->m_SndRoomtype != 0 && pPlayer->m_flSndRange != 0)
 			{
-				pPlayer->m_flSndRange = flRange;
-				goto env_sound_Think_fast;
-			}
-			else
-			{
+				// we're looking at a valid sound entity affecting
+				// player, make sure it's still valid, update range
+				if (FEnvSoundInRange(this, VARS(pentPlayer), flRange))
+				{
+					pPlayer->m_flSndRange = flRange;
+					return true;
+				}
+				else
+				{
+					// current sound entity affecting player is no longer valid,
+					// flag this state by clearing sound handle and range.
+					// NOTE: we do not actually change the player's room_type
+					// NOTE: until we have a new valid room_type to change it to.
 
-				// current sound entity affecting player is no longer valid,
-				// flag this state by clearing room_type and range.
-				// NOTE: we do not actually change the player's room_type
-				// NOTE: until we have a new valid room_type to change it to.
-
-				pPlayer->m_flSndRange = 0;
-				pPlayer->m_flSndRoomtype = 0;
-				goto env_sound_Think_slow;
+					pPlayer->m_SndLast = nullptr;
+					pPlayer->m_flSndRange = 0;
+				}
 			}
-		}
-		else
-		{
+
 			// entity is affecting player but is out of range,
 			// wait passively for another entity to usurp it...
-			goto env_sound_Think_slow;
+			return false;
 		}
-	}
 
-	// if we got this far, we're looking at an entity that is contending
-	// for current player sound. the closest entity to player wins.
-
-	if (FEnvSoundInRange(pev, VARS(pentPlayer), &flRange))
-	{
-		if (flRange < pPlayer->m_flSndRange || pPlayer->m_flSndRange == 0)
+		// if we got this far, we're looking at an entity that is contending
+		// for current player sound. the closest entity to player wins.
+		if (FEnvSoundInRange(this, VARS(pentPlayer), flRange))
 		{
-			// new entity is closer to player, so it wins.
-			pPlayer->m_pentSndLast = ENT(pev);
-			pPlayer->m_flSndRoomtype = m_flRoomtype;
-			pPlayer->m_flSndRange = flRange;
+			if (flRange < pPlayer->m_flSndRange || pPlayer->m_flSndRange == 0)
+			{
+				// new entity is closer to player, so it wins.
+				pPlayer->m_SndLast = this;
+				pPlayer->m_SndRoomtype = m_Roomtype;
+				pPlayer->m_flSndRange = flRange;
 
-			// send room_type command to player's server.
-			// this should be a rare event - once per change of room_type
-			// only!
+				// New room type is sent to player in CBasePlayer::UpdateClientData.
 
-			//CLIENT_COMMAND(pentPlayer, "room_type %f", m_flRoomtype);
-
-			MESSAGE_BEGIN(MSG_ONE, SVC_ROOMTYPE, nullptr, pentPlayer); // use the magic #1 for "one client"
-			WRITE_SHORT((short)m_flRoomtype);						// sequence number
-			MESSAGE_END();
-
-			// crank up nextthink rate for new active sound entity
-			// by falling through to think_fast...
+				// crank up nextthink rate for new active sound entity
+			}
+			// player is not closer to the contending sound entity.
+			// this effectively cranks up the think rate of env_sound entities near the player.
 		}
-		// player is not closer to the contending sound entity,
-		// just fall through to think_fast. this effectively
-		// cranks up the think_rate of entities near the player.
-	}
 
-	// player is in pvs of sound entity, but either not visible or
-	// not in range. do nothing, fall through to think_fast...
+		// player is in pvs of sound entity, but either not visible or not in range. do nothing.
 
-env_sound_Think_fast:
-	pev->nextthink = gpGlobals->time + 0.25;
-	return;
+		return true;
+	}();
 
-env_sound_Think_slow:
-	pev->nextthink = gpGlobals->time + 0.75;
-	return;
+	pev->nextthink = gpGlobals->time + (shouldThinkFast ? 0.25 : 0.75);
 }
 
 //
@@ -1633,7 +1598,7 @@ void SENTENCEG_Init()
 		}
 		else
 		{
-			//name matches with previous, increment group count
+			// name matches with previous, increment group count
 			if (isentencegs >= 0)
 				rgsentenceg[isentencegs].count++;
 		}
@@ -1696,7 +1661,7 @@ void EMIT_SOUND_DYN(edict_t* entity, int channel, const char* sample, float volu
 void EMIT_SOUND_PREDICTED(edict_t* entity, int channel, const char* sample, float volume, float attenuation,
 	int flags, int pitch)
 {
-	//If entity is not a player this will return false.
+	// If entity is not a player this will return false.
 	if (0 != g_engfuncs.pfnCanSkipPlayer(entity))
 	{
 		pmove->PM_PlaySound(channel, sample, volume, attenuation, flags, pitch);
@@ -2069,7 +2034,7 @@ float TEXTURETYPE_PlaySound(TraceResult* ptr, Vector vecSrc, Vector vecEnd, int 
 		{
 			UTIL_Sparks(ptr->vecEndPos);
 
-			float flVolume = RANDOM_FLOAT(0.7, 1.0); //random volume range
+			float flVolume = RANDOM_FLOAT(0.7, 1.0); // random volume range
 			switch (RANDOM_LONG(0, 1))
 			{
 			case 0:
@@ -2086,7 +2051,7 @@ float TEXTURETYPE_PlaySound(TraceResult* ptr, Vector vecSrc, Vector vecEnd, int 
 
 	// play material hit sound
 	UTIL_EmitAmbientSound(ENT(0), ptr->vecEndPos, rgsz[RANDOM_LONG(0, cnt - 1)], fvol, fattn, 0, 96 + RANDOM_LONG(0, 0xf));
-	//EMIT_SOUND_DYN( ENT(m_pPlayer->pev), CHAN_WEAPON, rgsz[RANDOM_LONG(0,cnt-1)], fvol, ATTN_NORM, 0, 96 + RANDOM_LONG(0,0xf));
+	// EMIT_SOUND_DYN( ENT(m_pPlayer->pev), CHAN_WEAPON, rgsz[RANDOM_LONG(0,cnt-1)], fvol, ATTN_NORM, 0, 96 + RANDOM_LONG(0,0xf));
 
 	return fvolbar;
 }
