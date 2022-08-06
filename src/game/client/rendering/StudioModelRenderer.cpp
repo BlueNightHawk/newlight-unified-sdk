@@ -792,6 +792,13 @@ void CStudioModelRenderer::StudioSetupBones()
 	static float pos4[MAXSTUDIOBONES][3];
 	static vec4_t q4[MAXSTUDIOBONES];
 
+	int boneindex = 0;
+
+	if (g_curviewmodelextrainfo)
+		boneindex = g_curviewmodelextrainfo->bobbone;
+
+	SetCurViewModelInfo();
+
 	if (m_pCurrentEntity->curstate.sequence >= m_pStudioHeader->numseq)
 	{
 		m_pCurrentEntity->curstate.sequence = 0;
@@ -956,8 +963,7 @@ void CStudioModelRenderer::StudioSetupBones()
 	{
 		QuaternionMatrix(q[i], bonematrix);
 
-		SetCurViewModelInfo();
-		if (i == 0)
+		if (i == boneindex)
 		{
 			if (m_pCurrentEntity->index == -555)
 			{
@@ -1141,11 +1147,23 @@ void CStudioModelRenderer::StudioCalcBob()
 	static model_s* cachedviewmodel;
 	static cl_entity_t bobent = *m_pCurrentEntity;
 	static cl_entity_t bobent2 = *m_pCurrentEntity;
-	model_s* bobmodel = IEngineStudio.Mod_ForName("models/v_bob.mdl", 0);
+	model_s* bobmodel = nullptr;
 	cl_entity_t basebobent, basebobent2;
 
 	float velocity = Vector(g_params.simvel).Length2D();
 	velocity = std::clamp(velocity * 0.095f, 1.0f, 20.0f);
+
+	int boneindex = 0;
+
+	float framerate = std::clamp(velocity / 20, 0.0f, 1.0f);
+
+	if (g_curviewmodelextrainfo && strlen(g_curviewmodelextrainfo->bobmodel) > 0)
+	{
+		bobmodel = IEngineStudio.Mod_ForName(g_curviewmodelextrainfo->bobmodel, 0);
+		boneindex = g_curviewmodelextrainfo->bobbone;
+	}
+	else
+		bobmodel = IEngineStudio.Mod_ForName("models/v_bob.mdl", 0);	
 
 	{
 		m_pCurrentEntity = &basebobent;
@@ -1164,7 +1182,7 @@ void CStudioModelRenderer::StudioCalcBob()
 		StudioSetupBones();
 		StudioSaveBones();
 
-		Matrix3x4_OriginFromMatrix((*m_pbonetransform)[0], org1);
+		Matrix3x4_OriginFromMatrix((*m_pbonetransform)[boneindex], org1);
 	}
 	if (cachedviewmodel != model)
 	{
@@ -1197,7 +1215,7 @@ void CStudioModelRenderer::StudioCalcBob()
 
 		m_pCurrentEntity->origin = Vector(0, 0, 0);
 		m_pCurrentEntity->angles = m_pCurrentEntity->curstate.angles = gEngfuncs.GetViewModel()->angles;
-		m_pCurrentEntity->curstate.framerate = velocity / 20;
+	//	m_pCurrentEntity->curstate.framerate = framerate;
 		m_pCurrentEntity->curstate.sequence = 0;
 
 		if (velocity <= 4.0f || m_clTime < m_pCurrentEntity->curstate.animtime)
@@ -1210,7 +1228,7 @@ void CStudioModelRenderer::StudioCalcBob()
 		StudioSetupBones();
 		StudioSaveBones();
 
-		Matrix3x4_OriginFromMatrix((*m_pbonetransform)[0], org2);
+		Matrix3x4_OriginFromMatrix((*m_pbonetransform)[boneindex], org2);
 	}
 
 	{
@@ -1223,7 +1241,7 @@ void CStudioModelRenderer::StudioCalcBob()
 		m_pCurrentEntity->index = -554;
 		m_pCurrentEntity->origin = Vector(0, 0, 0);
 		m_pCurrentEntity->angles = m_pCurrentEntity->curstate.angles = Vector(0,0,0);
-		m_pCurrentEntity->curstate.framerate = velocity / 20;
+	//	m_pCurrentEntity->curstate.framerate = framerate;
 		m_pCurrentEntity->curstate.sequence = 0;
 
 		if (velocity <= 4.0f || m_clTime < m_pCurrentEntity->curstate.animtime)

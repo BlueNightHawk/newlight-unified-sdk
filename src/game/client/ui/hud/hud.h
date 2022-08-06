@@ -842,7 +842,9 @@ typedef struct viewmodelinfo_s
 
 	Vector boneangles;
 
-	int jumpstate;
+	int jumpstate{0};
+	int crouchstate{0};
+	int bobbone{0};
 } viewmodelinfo_t;
 
 extern viewmodelinfo_t g_viewmodelinfo;

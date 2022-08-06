@@ -5,6 +5,9 @@ typedef struct viewmodelextrainf_s {
 	int cambone{0};
 	float camscale{0.0f};
 	float bobscale{0.0f};
+
+	int bobbone{0};
+	char bobmodel[64]{"\0"};
 } viewmodelextrainf_t;
 
 void ParseFunc_ReadViewModelInfo();

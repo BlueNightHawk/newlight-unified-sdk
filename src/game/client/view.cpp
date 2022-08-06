@@ -41,6 +41,10 @@ void InterpolateAngles(float* start, float* end, float* output, float frac);
 void NormalizeAngles(float* angles);
 float Distance(const float* v1, const float* v2);
 
+void ViewPunch(float* ev_punchangle, float frametime, float* punch);
+Vector jmp_punch, jmp_angles;
+Vector duck_punch, duck_angles;
+
 extern float vJumpOrigin[3];
 extern float vJumpAngles[3];
 
@@ -607,7 +611,30 @@ void V_SyncView(struct ref_params_s* pparams, cl_entity_s* view)
 	VectorAdd(view->origin, pparams->viewheight, view->origin);
 }
 
+void V_RetractWeapon(struct ref_params_s* pparams, cl_entity_s* view)
+{
+	pmtrace_t tr;
+	Vector vecSrc = pparams->vieworg;
+	Vector vecDir = pparams->forward;
+	Vector vecEnd = vecSrc + vecDir * 30;
+	static float flFraction = 0.0f;
 
+	// Store off the old count
+	gEngfuncs.pEventAPI->EV_PushPMStates();
+
+	// Now add in all of the players.
+	gEngfuncs.pEventAPI->EV_SetSolidPlayers(pparams->viewentity - 1);
+	gEngfuncs.pEventAPI->EV_SetTraceHull(2);
+
+	gEngfuncs.pEventAPI->EV_PlayerTrace(vecSrc, vecEnd, PM_NORMAL, pparams->viewentity, &tr);
+
+	gEngfuncs.pEventAPI->EV_PopPMStates();
+
+	flFraction = std::lerp(flFraction, tr.fraction, pparams->frametime * 10.0f);
+
+	view->origin = view->origin - ((vecDir * (1-flFraction) * 10));
+	view->angles[1] += (1 - flFraction) * 5;
+}
 
 void V_ApplyBob(struct ref_params_s* pparams, cl_entity_s* view)
 {
@@ -629,8 +656,12 @@ void V_ApplyBob(struct ref_params_s* pparams, cl_entity_s* view)
 
 		view->origin[i] += bobofs[i] * scale;
 	}
-	view->angles[0] -= (bobangles[0]*1.35f) * scale;
-	view->angles[2] += bobangles[1] + bobangles[2] * scale;
+//	view->angles[0] -= (bobangles[0]*1.15f) * scale;
+//	view->angles[2] += ((bobangles[1] + bobangles[2]) * 1.5f) * scale;
+//	view->angles[1] += bobangles[1] * scale;
+
+	view->angles[0] -= bobangles[0] * scale;
+	view->angles[2] += bobangles[2] * scale;
 	view->angles[1] += bobangles[1] * scale;
 
 	VectorAdd(pparams->viewangles, bobangles * 0.15f * scale, pparams->viewangles);
@@ -674,9 +705,6 @@ void V_ApplyPunchAngles(struct ref_params_s* pparams)
 	V_DropPunchAngle(pparams->frametime, ev_punchangle);
 }
 
-void ViewPunch(float* ev_punchangle, float frametime, float* punch);
-Vector jmp_punch, jmp_angles;
-
 void V_ApplyJumpAngles(struct ref_params_s* pparams, cl_entity_s *view)
 {
 	VectorAdd(pparams->viewangles, jmp_angles / 3.0f, pparams->viewangles);
@@ -697,6 +725,29 @@ void V_ApplyJumpAngles(struct ref_params_s* pparams, cl_entity_s *view)
 		jmp_punch[0] = -20 * 2.5;
 		jmp_punch[1] = 20 * 2.5;
 		g_viewmodelinfo.jumpstate = 0;
+	}
+}
+
+void V_ApplyCrouchAngles(struct ref_params_s* pparams, cl_entity_s* view)
+{
+	extern kbutton_s in_duck;
+
+//	VectorAdd(pparams->viewangles, duck_angles / 3.0f, pparams->viewangles);
+	VectorAdd(view->angles, duck_angles, view->angles);
+
+	view->origin = view->origin + Vector(pparams->up) * -duck_angles[0] * 0.2f;
+
+	ViewPunch(duck_angles, pparams->frametime, duck_punch);
+
+	if (g_viewmodelinfo.crouchstate == 1)
+	{
+		duck_punch[0] = 10 * 2.5;
+		g_viewmodelinfo.crouchstate = 2;
+	}
+	else if (g_viewmodelinfo.crouchstate == 2 && (pparams->viewheight[2] != VEC_DUCK_VIEW[2] && (in_duck.state & 1) == 0))
+	{
+		duck_punch[0] = -20 * 2.5;
+		g_viewmodelinfo.crouchstate = 0;
 	}
 }
 
@@ -847,6 +898,8 @@ void V_CalcNormalRefdef(struct ref_params_s* pparams)
 
 	V_CalcViewRoll(pparams, view);
 
+	V_RetractWeapon(pparams, view);
+
 	V_AddIdle(pparams);
 
 	V_ApplyShake(pparams, view);
@@ -859,6 +912,7 @@ void V_CalcNormalRefdef(struct ref_params_s* pparams)
 
 	V_ApplyPunchAngles(pparams);
 	V_ApplyJumpAngles(pparams, view);
+	V_ApplyCrouchAngles(pparams, view);
 
 	V_Interpolation(pparams, view);
 

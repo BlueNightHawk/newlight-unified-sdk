@@ -99,16 +99,19 @@ target_sources(client PRIVATE
 	interpolation.cpp
 	interpolation.h
 	in_defs.h
+	parsefuncs.cpp
+	parsefuncs.h
 	player_info.h
 	util.cpp
 	view.cpp
 	view.h
-	parsefuncs.cpp
-	
+
 	hl/hl_baseentity.cpp
 	hl/hl_events.cpp
 	hl/hl_objects.cpp
 	hl/hl_weapons.cpp
+
+	bspconverter/bspconverter.cpp
 
 	input/camera.h
 	input/input.cpp

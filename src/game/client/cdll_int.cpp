@@ -104,7 +104,7 @@ void DLLEXPORT HUD_PlayerMove(struct playermove_s* ppmove, int server)
 
 	PM_Move(ppmove, server);
 }
-
+void Bshift_ConvertMaps();
 int DLLEXPORT Initialize(cl_enginefunc_t* pEnginefuncs, int iVersion)
 {
 	gEngfuncs = *pEnginefuncs;
@@ -242,6 +242,9 @@ void DLLEXPORT HUD_Frame(double time)
 	//	RecClHudFrame(time);
 
 	GetClientVoiceMgr()->Frame(time);
+
+	
+	Bshift_ConvertMaps();
 
 	g_Client.Frame();
 }

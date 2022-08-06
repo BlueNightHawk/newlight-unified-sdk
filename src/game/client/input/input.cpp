@@ -461,6 +461,9 @@ void IN_JumpDown()
 void IN_JumpUp() { KeyUp(&in_jump); }
 void IN_DuckDown()
 {
+	if (g_viewmodelinfo.crouchstate == 0)
+		g_viewmodelinfo.crouchstate = 1;
+
 	KeyDown(&in_duck);
 	gHUD.m_Spectator.HandleButtonsDown(IN_DUCK);
 }

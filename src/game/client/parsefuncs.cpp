@@ -24,7 +24,12 @@ void ParseFunc_ReadViewModelInfo()
 
 	while (parsefile)
 	{
-		tokmatch("name")
+		tokmatch("globalbobbone")
+		{
+			parsefile;
+			g_viewmodelinfo.bobbone = atoi(token);
+		}
+		else tokmatch("name")
 		{
 			parsefile;
 			strcpy(tempname, token);
@@ -64,6 +69,18 @@ void ParseFunc_ReadViewModelInfo()
 				{
 					parsefile;
 					g_viewmodelextrainfo[index].bobscale = atof(token);
+				}
+
+				tokmatch("bobbone")
+				{
+					parsefile;
+					g_viewmodelextrainfo[index].bobbone = atoi(token);
+				}
+
+				tokmatch("bobmodel")
+				{
+					parsefile;
+					strcpy(g_viewmodelextrainfo[index].bobmodel,token);
 				}
 			}
 		}
