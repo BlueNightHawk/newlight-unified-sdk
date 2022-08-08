@@ -96,5 +96,10 @@ function(add_game_shared_sources target)
 			${CMAKE_CURRENT_FUNCTION_LIST_DIR}/utils/shared_utils.cpp
 			${CMAKE_CURRENT_FUNCTION_LIST_DIR}/utils/shared_utils.h
 			${CMAKE_CURRENT_FUNCTION_LIST_DIR}/utils/string_utils.cpp
-			${CMAKE_CURRENT_FUNCTION_LIST_DIR}/utils/string_utils.h)
+			${CMAKE_CURRENT_FUNCTION_LIST_DIR}/utils/string_utils.h
+			${CMAKE_CURRENT_FUNCTION_LIST_DIR}/utils/FontAwesome.h		
+			${CMAKE_CURRENT_FUNCTION_LIST_DIR}/utils/fs_aux.cpp		
+			${CMAKE_CURRENT_FUNCTION_LIST_DIR}/utils/fs_aux.h				
+			${CMAKE_CURRENT_FUNCTION_LIST_DIR}/utils/cpp_aux.h				
+			)
 endfunction()

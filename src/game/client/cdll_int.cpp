@@ -41,12 +41,18 @@
 
 #include "parsefuncs.h"
 
+#include "PlatformHeaders.h"
+#include "imgui/hl_imgui.h"
+#include "fs_aux.h"
+
 void CL_LoadParticleMan();
 void CL_UnloadParticleMan();
 
 void InitInput();
 void EV_HookEvents();
 void IN_Commands();
+
+void Bshift_ConvertMaps();
 
 /*
 ================================
@@ -104,7 +110,7 @@ void DLLEXPORT HUD_PlayerMove(struct playermove_s* ppmove, int server)
 
 	PM_Move(ppmove, server);
 }
-void Bshift_ConvertMaps();
+
 int DLLEXPORT Initialize(cl_enginefunc_t* pEnginefuncs, int iVersion)
 {
 	gEngfuncs = *pEnginefuncs;
@@ -125,6 +131,11 @@ int DLLEXPORT Initialize(cl_enginefunc_t* pEnginefuncs, int iVersion)
 	{
 		return 0;
 	}
+
+	FS_InitModule();
+	HL_ImGUI_Init();
+
+	gHUD.m_bInMainMenu = gHUD.m_bIsPaused = true;
 
 	ParseFunc_ReadViewModelInfo();
 
@@ -241,8 +252,10 @@ void DLLEXPORT HUD_Frame(double time)
 {
 	//	RecClHudFrame(time);
 
-	GetClientVoiceMgr()->Frame(time);
+	if (gEngfuncs.GetAbsoluteTime() > 3.0f)
+		gHUD.m_bInMainMenu = ((unsigned int)gEngfuncs.GetLocalPlayer()) <= 4098 && gEngfuncs.GetAbsoluteTime() - gHUD.m_flIsPausedLastUpdate > 2.0f;
 
+	GetClientVoiceMgr()->Frame(time);
 	
 	Bshift_ConvertMaps();
 

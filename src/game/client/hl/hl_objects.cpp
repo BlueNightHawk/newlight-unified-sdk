@@ -37,6 +37,7 @@ void UpdateBeams()
 	pmtrace_t tr;
 	cl_entity_t* pthisplayer = gEngfuncs.GetLocalPlayer();
 	int idx = pthisplayer->index;
+	cl_entity_s* view = gEngfuncs.GetViewModel();
 
 	// Get our exact viewangles from engine
 	gEngfuncs.GetViewAngles(angles);
@@ -62,6 +63,9 @@ void UpdateBeams()
 	gEngfuncs.pEventAPI->EV_PlayerTrace(vecSrc, vecEnd, PM_STUDIO_BOX, -1, &tr);
 
 	gEngfuncs.pEventAPI->EV_PopPMStates();
+
+	pBeam->source = view->attachment[0];
+	pBeam2->source = view->attachment[0];
 
 	if (pBeam)
 	{

@@ -825,6 +825,10 @@ public:
 			return color;
 		}
 	}
+
+	bool m_bInMainMenu;
+	bool m_bIsPaused;
+	float m_flIsPausedLastUpdate;
 };
 
 typedef struct viewmodelinfo_s

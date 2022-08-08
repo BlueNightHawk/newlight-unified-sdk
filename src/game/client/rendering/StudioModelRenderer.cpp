@@ -1608,9 +1608,7 @@ bool CStudioModelRenderer::StudioDrawPlayer(int flags, entity_state_t* pplayer)
 	if (m_nPlayerIndex < 0 || m_nPlayerIndex >= gEngfuncs.GetMaxClients())
 		return false;
 
-
 	m_pRenderModel = IEngineStudio.SetupPlayerModel(m_nPlayerIndex);
-
 
 	if (m_pRenderModel == nullptr)
 		return false;
@@ -1774,6 +1772,13 @@ void CStudioModelRenderer::StudioCalcAttachments()
 	for (i = 0; i < m_pStudioHeader->numattachments; i++)
 	{
 		VectorTransform(pattachment[i].org, (*m_plighttransform)[pattachment[i].bone], m_pCurrentEntity->attachment[i]);
+		// Fix viewmodel beam attachments issue
+		if (m_pCurrentEntity == gEngfuncs.GetViewModel())
+		{
+			cl_entity_t* player = gEngfuncs.GetLocalPlayer();
+			if (player != nullptr)
+				player->attachment[i] = m_pCurrentEntity->attachment[i];
+		}
 	}
 }
 

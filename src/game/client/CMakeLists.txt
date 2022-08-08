@@ -58,7 +58,8 @@ target_include_directories(client PRIVATE
 	
 target_compile_definitions(client PRIVATE
 	CLIENT_DLL
-	HL_DLL)
+	HL_DLL
+	WINDOWS_IGNORE_PACKING_MISMATCH)
 	
 target_link_libraries(client PRIVATE
 	vgui
@@ -66,7 +67,8 @@ target_link_libraries(client PRIVATE
 	$<$<PLATFORM_ID:Windows>:wsock32>
 	SDL2
 	OpenAL::OpenAL
-	libnyquist)
+	libnyquist
+	opengl32)
 
 if (UNIX)
 	# Tell the linker to search for vgui.so and SDL2-2.0.so.0 in here
@@ -213,6 +215,11 @@ target_sources(client PRIVATE
 	ui/vgui/utils/vgui_slider2.cpp
 	ui/vgui/utils/vgui_slider2.h
 
+	imgui/hl_imgui.cpp
+	imgui/hl_imgui.h
+	imgui/CChapterSelectGUI.cpp
+	imgui/CChapterSelectGUI.h
+
 	../server/cdll_dll.h
 	../server/enginecallback.h
 	../server/extdll.h
@@ -275,6 +282,19 @@ target_sources(client PRIVATE
 	../../public/keydefs.h
 	../../public/cl_dll/IGameClientExports.h
 	../../public/steam/steamtypes.h
+	
+	../../../external/imgui/imgui.cpp
+	../../../external/imgui/imgui_demo.cpp	
+	../../../external/imgui/imgui_draw.cpp
+	../../../external/imgui/imgui_impl_sdl.cpp	
+	../../../external/imgui/imgui_impl_opengl2.cpp	
+	../../../external/imgui/imgui_tables.cpp	
+	../../../external/imgui/imgui_widgets.cpp	
+	../../../external/imgui/imgui.h
+	../../../external/imgui/imgui_impl_sdl.h
+	../../../external/imgui/imgui_impl_opengl2.h
+	../../../external/imgui/imgui_internal.h
+	../../../external/imgui/stb_image.h
 )
 
 add_game_shared_sources(client)

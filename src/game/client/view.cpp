@@ -1774,6 +1774,9 @@ void DLLEXPORT V_CalcRefdef(struct ref_params_s* pparams)
 
 	memcpy(&g_params, pparams, sizeof(ref_params_s));
 
+	gHUD.m_bIsPaused = pparams->paused;
+	gHUD.m_flIsPausedLastUpdate = gEngfuncs.GetAbsoluteTime();
+
 	/*
 	// Example of how to overlay the whole screen with red at 50 % alpha
 	#define SF_TEST
